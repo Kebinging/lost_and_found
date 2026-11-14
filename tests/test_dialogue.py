@@ -206,3 +206,93 @@ def test_claim_status_lookup():
     bot, _ = make()
     assert "Pending" in bot.handle_message("what is the status of CL-0007?")[0]
     assert "couldn't find" in bot.handle_message("check claim cl-99")[0]
+
+
+# --------------------------------------------------------------------------- #
+# Messy input, "Did you mean ...?" and quick replies
+# --------------------------------------------------------------------------- #
+def test_short_forms_and_typos_fill_every_slot():
+    bot, fakes = make()
+    bot.handle_message("lost my blck hp at caf ytd")
+    assert bot.awaiting_photo
+    bot.handle_message("No photo")
+    query = fakes.queries[0]
+    assert (query["category"], query["colour"], query["location"]) == ("Phone", "Black", "Cafeteria")
+    assert query["date_lost"] == dt.date.today() - dt.timedelta(days=1)
+
+
+def test_unclear_item_asks_did_you_mean():
+    bot, _ = make()
+    bot.handle_message("I lost something")
+    assert "Phone" in bot.quick_replies                      # item buttons
+    reply = bot.handle_message("calcu")
+    assert "Did you mean **calculator**?" in reply[0]
+    assert bot.quick_replies == ["Yes", "No"]
+    bot.handle_message("yes")
+    assert bot.state["slots"]["category"] == "Calculator"
+    assert bot.state["pending_slot"] == "colour"
+    assert "Not sure" in bot.quick_replies                   # colour buttons
+
+
+def test_saying_no_to_did_you_mean_asks_again():
+    bot, _ = make()
+    bot.handle_message("I lost something")
+    bot.handle_message("calcu")
+    reply = bot.handle_message("no")
+    assert bot.state["slots"]["category"] is None
+    assert "What kind of item" in reply[0]
+
+
+def test_ignoring_did_you_mean_handles_the_new_message():
+    bot, _ = make()
+    bot.handle_message("I lost something")
+    bot.handle_message("calcu")
+    bot.handle_message("umbrella")
+    assert bot.state["slots"]["category"] == "Umbrella"
+    assert bot.state["confirm"] is None
+
+
+def test_lone_misspelt_item_offers_a_report():
+    bot, _ = make()
+    assert "lost your **umbrella**" in bot.handle_message("brela")[0]
+    bot.handle_message("yes")
+    assert bot.stage == dlg.COLLECTING
+    assert bot.state["slots"]["category"] == "Umbrella"
+
+
+def test_unsure_intent_is_confirmed_before_answering():
+    bot = LostItemDialogue({}, predict_intent=lambda t: ("fallback", 0.3),
+                           rank_intents=lambda t: [("office_hours", 0.3), ("greeting", 0.2)])
+    assert "opening hours?" in bot.handle_message("opn tiem?")[0]
+    assert "9:00" in bot.handle_message("yes")[0]
+
+
+def test_no_guess_when_the_message_is_off_topic():
+    bot = LostItemDialogue({}, predict_intent=lambda t: ("fallback", 0.9),
+                           rank_intents=lambda t: [("fallback", 0.9)])
+    bot.handle_message("tell me a joke")
+    assert bot.state["confirm"] is None
+
+
+def test_found_item_without_found_wording_is_double_checked():
+    bot, _ = make()
+    assert "hand in something you found" in bot.handle_message("wallet")[0]
+
+
+def test_quick_replies_follow_the_conversation():
+    bot, _ = make()
+    assert "I lost something" in bot.quick_replies           # idle menu
+    bot.handle_message("I lost my umbrella")
+    assert "Black" in bot.quick_replies                      # colour step
+    for answer in ["Black", "Yesterday", "Library"]:
+        bot.handle_message(answer)
+    assert bot.quick_replies == ["No photo"]
+    bot.handle_message("No photo")
+    assert bot.quick_replies == []                           # claim form is showing
+
+
+@pytest.mark.parametrize("button", dlg.MENU_REPLIES)
+def test_every_menu_button_is_understood(button):
+    bot, _ = make()
+    reply = bot.handle_message(button)
+    assert reply and "didn't understand" not in reply[0]

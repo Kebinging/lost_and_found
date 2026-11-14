@@ -11,6 +11,11 @@
 * CLAIM_FORM - on a match, collect name, student ID and contact, then create
   a claim and hand out its reference.
 
+Every message is first normalised (short forms, chat words and typos are
+fixed, see ``chatbot/normalise.py``). When the bot is still unsure what the
+student meant, it asks "Did you mean ...?" (yes / no) instead of giving up,
+and ``quick_replies`` lists buttons the page can show for the current step.
+
 All state lives in a plain mapping supplied by the caller. The Streamlit page
 passes a dict kept in ``st.session_state``, so the conversation survives
 reruns; the tests pass an ordinary dict. The class itself never touches
@@ -30,7 +35,7 @@ import re
 from typing import Callable, MutableMapping
 
 import config
-from chatbot import nlu
+from chatbot import nlu, normalise
 
 # Dialogue stages
 IDLE = "IDLE"
@@ -49,19 +54,38 @@ MAX_RETRIES = 1       # re-ask an optional slot once, then move on
 _UNSURE = re.compile(
     r"\b(not sure|unsure|no idea|don'?t know|do not know|dunno|idk|can'?t remember|"
     r"cannot remember|don'?t remember|forgot|skip|unknown|no clue|n/?a)\b")
-_NO = re.compile(r"^\s*(no|nope|nah|skip|none|don'?t have( one)?|i don'?t( have( one)?)?|"
-                 r"no photo|not really)\b")
-_YES = re.compile(r"^\s*(yes|yeah|yep|yup|sure|ok|okay|i do|i have)\b")
+_NO = re.compile(r"^\s*(no|nope|nah|n|skip|none|don'?t have( one)?|i don'?t( have( one)?)?|"
+                 r"no photo|not really|wrong|not that|bukan|tak)\b")
+_YES = re.compile(r"^\s*(yes|yeah|yea|yep|yup|ya|yah|y|sure|ok|okay|i do|i have|"
+                  r"correct|right|that's it|betul)\b")
 _START_OVER = re.compile(r"\b(start over|start again|restart|reset|cancel)\b")
 _LOST_WORDS = re.compile(
     r"\b(lost|lose|losing|missing|misplaced|can'?t find|cannot find|couldn'?t find|"
     r"left my|forgot my|dropped my|looking for my)\b")
+_FOUND_WORDS = re.compile(
+    r"\b(found|find|picked|pick up|came across|come across|hand in|handed|turn in|"
+    r"turned in|left behind|left a|left an|someone|somebody|someones|someone's)\b")
 _CLAIM_REFERENCE = re.compile(r"\bCL-?(\d{1,6})\b", re.IGNORECASE)
 
 MATCH_MESSAGE = ("Good news, we have {n} possible match{es}. To avoid unnecessary trips, "
                  "please leave your details and bring proof of ownership to the "
                  "Lost & Found counter.")
 NO_MATCH_MESSAGE = "No matching item has been handed in yet. Please check again later."
+
+# Intents the bot may double-check with "Did you want to ...?" when unsure.
+INTENT_QUESTIONS = {
+    "report_lost_item": "report something you lost",
+    "check_claim_status": "check the status of a claim",
+    "office_hours": "know the opening hours",
+    "office_location": "know where the Lost & Found counter is",
+    "how_it_works": "know how this assistant works",
+    "found_an_item": "hand in something you found",
+}
+CONFIRM_MIN_CONFIDENCE = 0.2   # below this the bot does not even guess
+
+# Buttons shown when the bot is idle.
+MENU_REPLIES = ["I lost something", "Opening hours", "Where is the counter?",
+                "Check my claim", "How does this work?"]
 
 
 def _load_responses() -> dict[str, list[str]]:
@@ -77,9 +101,10 @@ class LostItemDialogue:
     state:
         Mapping that holds the conversation state between messages (pass the
         same one each time, e.g. a dict stored in ``st.session_state``).
-    find_matches, add_claim, load_claims, predict_intent, extract_slots:
+    find_matches, add_claim, load_claims, predict_intent, extract_slots, rank_intents:
         Dependencies, injectable for testing. They default to the real
-        matcher, storage and NLU functions.
+        matcher, storage and NLU functions. (If ``predict_intent`` is
+        replaced but ``rank_intents`` is not, the bot never guesses an intent.)
     """
 
     def __init__(
@@ -91,6 +116,7 @@ class LostItemDialogue:
         load_claims: Callable | None = None,
         predict_intent: Callable | None = None,
         extract_slots: Callable | None = None,
+        rank_intents: Callable | None = None,
     ) -> None:
         self.state = state if state is not None else {}
         self._find_matches = find_matches
@@ -98,6 +124,8 @@ class LostItemDialogue:
         self._load_claims = load_claims
         self._predict_intent = predict_intent or nlu.predict_intent
         self._extract_slots = extract_slots or nlu.extract_slots
+        self._rank_intents = rank_intents or (nlu.rank_intents if predict_intent is None
+                                              else (lambda text: []))
         self._responses = _load_responses()
         if "stage" not in self.state:
             self.reset()
@@ -117,6 +145,7 @@ class LostItemDialogue:
             "photo_embedding": None,
             "matches": [],            # [{"item_id", "score"}] - NEVER shown to the student
             "claim_id": None,
+            "confirm": None,          # open "Did you mean ...?" question, see _ask_confirm
         })
 
     @property
@@ -133,6 +162,27 @@ class LostItemDialogue:
         """True while the claim form (name, student ID, contact) should be shown."""
         return self.stage == CLAIM_FORM
 
+    @property
+    def quick_replies(self) -> list[str]:
+        """Suggested answers for the current step, for the page to show as buttons.
+
+        Each one is ordinary text the bot understands when sent as a message.
+        """
+        if self.state.get("confirm"):
+            return ["Yes", "No"]
+        if self.stage == COLLECTING:
+            return {
+                "category": list(config.CATEGORIES),
+                "colour": list(config.COLOUR_PALETTE) + ["Not sure"],
+                "date_lost": ["Today", "Yesterday", "2 days ago", "Last week", "Not sure"],
+                "location": list(config.LOCATIONS) + ["Not sure"],
+            }.get(self.state["pending_slot"], [])
+        if self.stage == ASK_PHOTO:
+            return ["No photo"]
+        if self.stage in (IDLE, DONE):
+            return list(MENU_REPLIES)
+        return []
+
     def _canned(self, intent: str) -> str:
         return random.choice(self._responses.get(intent) or self._responses[nlu.FALLBACK_INTENT])
 
@@ -144,9 +194,16 @@ class LostItemDialogue:
         text = text.strip()
         if not text:
             return []
-        if _START_OVER.search(text.lower()) and self.stage not in (IDLE, DONE):
+        # Fix short forms, chat words and typos once; everything below uses this.
+        text = normalise.normalise(text).text or text.lower()
+        if _START_OVER.search(text) and self.stage not in (IDLE, DONE):
             self.reset()
             return ["No problem, let's start again. What did you lose?"]
+
+        if self.state.get("confirm"):
+            replies = self._answer_confirm(text)
+            if replies is not None:
+                return replies
 
         if self.stage == COLLECTING:
             return self._collect(text)
@@ -211,14 +268,86 @@ class LostItemDialogue:
             or (_LOST_WORDS.search(lowered) and intent != "found_an_item")
             or (intent == nlu.FALLBACK_INTENT and slots.get("category"))
         )
-        if not is_report:
-            return [self._canned(intent)]
+        if is_report:
+            return self._start_report(text, slots)
+        # Handing in an item normally has found-type wording; without it ("wallet",
+        # "i fund a phone") the classifier may be right or wrong, so ask.
+        if intent == "found_an_item" and not _FOUND_WORDS.search(lowered):
+            return self._ask_confirm(
+                {"kind": "intent", "intent": intent, "text": text},
+                f"Just to check: did you want to {INTENT_QUESTIONS[intent]}?")
+        if intent == nlu.FALLBACK_INTENT:
+            item = nlu.suggest_slot(text, "category")
+            if item:   # e.g. "brela" -> "Did you lose your umbrella?"
+                return self._ask_confirm(
+                    {"kind": "intent", "intent": "report_lost_item",
+                     "text": f"i lost my {item.lower()}"},
+                    f"Did you mean you lost your **{item.lower()}**?")
+            guess = self._guess_intent(text)
+            if guess:
+                return self._ask_confirm(
+                    {"kind": "intent", "intent": guess, "text": text},
+                    f"Sorry, I'm not sure I understood. Did you want to {INTENT_QUESTIONS[guess]}?")
+        return [self._canned(intent)]
 
+    def _start_report(self, text: str, slots: dict) -> list[str]:
         self.reset()
         self.state["stage"] = COLLECTING
         self.state["description"].append(text)
         self._merge_slots(slots)
         return [self._canned("report_lost_item")] + self._advance()
+
+    def _guess_intent(self, text: str) -> str | None:
+        """The most likely intent if the classifier leans towards one, else ``None``.
+
+        Used when the classifier is not confident enough to act on its own
+        but has a reasonable guess, so the bot can ask instead of giving up.
+        """
+        ranked = self._rank_intents(text)
+        if not ranked:
+            return None
+        intent, confidence = ranked[0]
+        if intent in INTENT_QUESTIONS and confidence >= CONFIRM_MIN_CONFIDENCE:
+            return intent
+        return None
+
+    # ------------------------------------------------------------------ #
+    # "Did you mean ...?"
+    # ------------------------------------------------------------------ #
+    def _ask_confirm(self, question: dict, message: str) -> list[str]:
+        """Remember an open yes/no question and return it as the bot's reply.
+
+        ``question`` is ``{"kind": "slot", "slot": ..., "value": ...}`` or
+        ``{"kind": "intent", "intent": ..., "text": <the original message>}``.
+        """
+        self.state["confirm"] = question
+        return [message]
+
+    def _answer_confirm(self, text: str) -> list[str] | None:
+        """Handle the reply to a "Did you mean ...?" question.
+
+        Returns ``None`` when the student ignored the question and wrote
+        something else; that message is then handled normally.
+        """
+        question = self.state["confirm"]
+        self.state["confirm"] = None
+        if _YES.search(text):
+            if question["kind"] == "slot":
+                slot, value = question["slot"], question["value"]
+                self.state["slots"][slot] = value
+                self.state["retries"].pop(slot, None)
+                self.state["description"].append(value.lower())
+                return [f"Got it: {value.lower()}."] + self._advance()
+            if question["intent"] == "report_lost_item":
+                return self._start_report(question["text"], self._extract_slots(question["text"]))
+            return [self._canned(question["intent"])]
+        if _NO.search(text):
+            if question["kind"] == "slot":
+                return ["Okay, my mistake. " + self._question(question["slot"])
+                        + " You can also pick one of the buttons below."]
+            return ["Sorry about that. Could you say it another way? "
+                    "You can also pick one of the buttons below."]
+        return None
 
     def _claim_status(self, claim_id: str) -> str:
         load_claims = self._load_claims
@@ -262,6 +391,10 @@ class LostItemDialogue:
 
         if pending and not answered:
             unsure = bool(_UNSURE.search(text.lower()))
+            guess = None if unsure else nlu.suggest_slot(text, pending)
+            if guess:
+                return self._ask_confirm({"kind": "slot", "slot": pending, "value": guess},
+                                         f"Did you mean **{guess.lower()}**?")
             if pending == "category":
                 # Required slot: keep asking, and explain what can be searched.
                 options = ", ".join(c.lower() for c in config.CATEGORIES)

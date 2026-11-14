@@ -21,7 +21,8 @@ setup_page("Lost something? Ask the assistant")
 
 WELCOME = ("Hello! I'm the Lost & Found assistant. Tell me what you lost - for example "
            "\"I lost my black umbrella at the library yesterday\" - and I'll check "
-           "whether it has been handed in.")
+           "whether it has been handed in. Short forms and typos are fine, and you "
+           "can also tap the buttons below.")
 
 # Conversation state lives in the session so it survives Streamlit reruns.
 if "dialogue_state" not in st.session_state:
@@ -92,6 +93,18 @@ if dialogue.awaiting_claim_form:
             if st.form_submit_button("Submit claim", type="primary"):
                 run_safely(lambda: dialogue.submit_claim(name, student_id, contact))
                 st.rerun()
+
+# ---- Quick-reply buttons ----------------------------------------------------- #
+# Suggested answers for the current step (item types, colours, yes / no, ...).
+# Tapping one sends it exactly as if the student had typed it.
+quick_replies = dialogue.quick_replies
+if quick_replies:
+    choice = st.pills("Quick replies", quick_replies, label_visibility="collapsed",
+                      key=f"quick_reply_{len(history)}")
+    if choice:
+        history.append(("user", choice))
+        run_safely(lambda: dialogue.handle_message(choice))
+        st.rerun()
 
 # ---- Chat input ------------------------------------------------------------ #
 if prompt := st.chat_input("Describe your lost item..."):

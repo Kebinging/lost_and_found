@@ -131,8 +131,41 @@ With only ~13 example patterns per intent the held-out report is noisy (a few te
 sentences per intent). The dialogue therefore also uses simple rules - e.g. a message
 containing "lost", "missing" or "can't find" is always treated as a lost-item report.
 
-The opening hours and counter location in `intents.json` are placeholders; replace them
-with your university's details.
+### Handling typos and short forms
+
+Students type quickly, so the chatbot has five layers that make it tolerant of messy text:
+
+| # | Layer | Where | Example |
+|---|---|---|---|
+| 1 | **Short-form dictionary** - abbreviations, chat words and common Malay words; fillers like "lah" are dropped | `chatbot/normalise.py` (`SHORT_FORMS`) | "hp" → phone, "lib" → library, "ytd" / "semalam" → yesterday |
+| 2 | **Spelling correction** - an unknown word becomes the closest known word within 1 edit (≤ 5 letters) or 2 edits (longer), using Damerau-Levenshtein distance; real English words (WordNet) are never changed | `chatbot/normalise.py` | "umbrela" → umbrella, "lsot" → lost, but "bottom" stays "bottom" |
+| 3 | **Typo-tolerant intent model** - whole-word *and* letter (2-5 character) TF-IDF features, trained with 3 extra typo copies of every pattern | `chatbot/train_intents.py` | "how does ths work" → how it works |
+| 4 | **"Did you mean ...?"** - when still unsure, the bot asks instead of giving up | `chatbot/dialogue.py` | "calcu" → "Did you mean **calculator**?" |
+| 5 | **Quick-reply buttons** - item types, colours, dates, locations, yes / no | Student Chatbot page | Tap "Black" instead of typing |
+
+Measure it on 50 messy messages (`chatbot/messy_test_set.json`) - original vs improved:
+
+```bash
+python scripts/evaluate_chatbot.py
+```
+
+| Accuracy | Before | After |
+|---|---|---|
+| Intent | 82% | 100% |
+| Item category | 21% | 100% |
+| Colour | 79% | 100% |
+| Location | 67% | 100% |
+| Date | 75% | 100% |
+
+These messages were written while building the improvements, so the "after" figures are
+optimistic. For a fair result, have someone who did not work on the chatbot write a fresh
+set of messy messages and run the same script on them.
+
+WordNet (used for lemmatisation and to protect real words) is downloaded into the
+project's `nltk_data/` folder on first use.
+
+The opening hours in `intents.json` are placeholders; replace them with your
+university's details.
 
 ## How matching works
 
@@ -174,6 +207,7 @@ lost_and_found/
 │   ├── prepare_dataset.py  # drop "None", remap IDs, re-split 70/20/10
 │   ├── train.py            # local training
 │   ├── evaluate.py         # metrics + confusion matrix on the test split
+│   ├── evaluate_chatbot.py # chatbot accuracy on messy messages, before vs after
 │   └── seed_demo_data.py   # add ~15 demo found items
 ├── models/                 # best.pt (you train it) and yolo11n.pt (auto-downloaded)
 ├── data/                   # created at runtime, NOT committed
@@ -188,7 +222,9 @@ lost_and_found/
 │   └── matcher.py          # scoring + ranking
 ├── chatbot/
 │   ├── intents.json        # intents with patterns + responses
-│   ├── train_intents.py    # trains the intent classifier
+│   ├── train_intents.py    # trains the intent classifier (letters + typo copies)
+│   ├── normalise.py        # short forms, chat words, spelling correction
+│   ├── messy_test_set.json # 50 messy messages for scripts/evaluate_chatbot.py
 │   ├── nlu.py              # preprocessing, intent prediction, slot extraction
 │   └── dialogue.py         # conversation state machine
 ├── app/

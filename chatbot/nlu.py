@@ -18,6 +18,7 @@ import re
 from functools import lru_cache
 
 import config
+from chatbot import normalise
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +35,12 @@ def _lemmatizer():
     chatbot still works, just without lemmatisation.
     """
     try:
-        import nltk
         from nltk.stem import WordNetLemmatizer
 
+        if normalise.ensure_wordnet() is None:
+            raise LookupError("wordnet")
         lemmatizer = WordNetLemmatizer()
-        try:
-            lemmatizer.lemmatize("keys")
-        except LookupError:
-            nltk.download("wordnet", quiet=True)
-            lemmatizer.lemmatize("keys")
+        lemmatizer.lemmatize("keys")
         return lemmatizer
     except Exception:
         logger.warning("NLTK WordNet unavailable; continuing without lemmatisation.")
@@ -84,15 +82,23 @@ def load_intent_model():
     return train_intents.train_and_save(verbose=False)
 
 
-def predict_intent(text: str) -> tuple[str, float]:
-    """Return ``(intent, confidence)``; low confidence gives ``("fallback", conf)``."""
-    cleaned = preprocess(text)
+def rank_intents(text: str) -> list[tuple[str, float]]:
+    """Return every intent with its probability, most likely first.
+
+    The message is normalised first (short forms, typos), then preprocessed.
+    """
+    cleaned = preprocess(normalise.normalise(text).text)
     if not cleaned:
-        return FALLBACK_INTENT, 0.0
+        return [(FALLBACK_INTENT, 0.0)]
     model = load_intent_model()
     probabilities = model.predict_proba([cleaned])[0]
-    best = int(probabilities.argmax())
-    intent, confidence = str(model.classes_[best]), float(probabilities[best])
+    ranked = sorted(zip(model.classes_, probabilities), key=lambda pair: -pair[1])
+    return [(str(intent), float(probability)) for intent, probability in ranked]
+
+
+def predict_intent(text: str) -> tuple[str, float]:
+    """Return ``(intent, confidence)``; low confidence gives ``("fallback", conf)``."""
+    intent, confidence = rank_intents(text)[0]
     if confidence < config.INTENT_CONFIDENCE:
         return FALLBACK_INTENT, confidence
     return intent, confidence
@@ -236,10 +242,32 @@ def extract_slots(text: str, today: dt.date | None = None) -> dict:
     """Extract ``category``, ``colour``, ``location`` and ``date_lost`` from ``text``.
 
     Slots that are not mentioned are ``None``. ``today`` can be fixed for tests.
+    The message is normalised first, so "blck hp at lib ytd" works.
     """
+    text = normalise.normalise(text).text
     return {
         "category": extract_category(text),
         "colour": extract_colour(text),
         "location": extract_location(text),
         "date_lost": extract_date(text, today),
     }
+
+
+# --------------------------------------------------------------------------- #
+# "Did you mean ...?" suggestions
+# --------------------------------------------------------------------------- #
+_SLOT_SYNONYMS = {
+    "category": lambda: config.CATEGORY_SYNONYMS,
+    "colour": lambda: config.COLOUR_SYNONYMS,
+    "location": lambda: config.LOCATION_SYNONYMS,
+}
+
+
+def suggest_slot(text: str, slot: str) -> str | None:
+    """Guess which category / colour / location an unclear answer meant.
+
+    Only used to *ask* the student ("Did you mean umbrella?"), never to fill
+    a slot directly. Returns ``None`` for slots without a word list (dates).
+    """
+    synonyms = _SLOT_SYNONYMS.get(slot)
+    return normalise.suggest(text, synonyms()) if synonyms else None
