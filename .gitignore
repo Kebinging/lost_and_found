@@ -1,6 +1,8 @@
 # Datasets and model weights (large; re-creatable)
 datasets/
 *.pt
+# ...except the trained model, shared with the group (~5 MB)
+!models/best.pt
 runs/
 
 # Runtime data: photos, records (claims hold students' personal details)

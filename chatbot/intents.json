@@ -92,8 +92,8 @@
         "where is the office", "directions to the lost and found", "where can i find you"
       ],
       "responses": [
-        "The Lost & Found counter is at the Student Services Centre, ground floor, next to the main entrance.",
-        "You'll find us on the ground floor of the Student Services Centre."
+        "The Lost & Found counter is at B1 #107.",
+        "You'll find us on the ground floor of B1, room #107."
       ]
     },
     {
@@ -120,8 +120,8 @@
         "i want to turn in a found calculator"
       ],
       "responses": [
-        "Thank you for being honest! Please bring the item to the Lost & Found counter so staff can register it.",
-        "That's kind of you. Please hand it in at the Lost & Found counter and our staff will take it from there."
+        "Thank you for being honest! Please bring the item to the Lost & Found counter at B1 #107 so staff can register it.",
+        "That's kind of you. Please hand it in at the Lost & Found counter (B1 #107) and our staff will take it from there."
       ]
     },
     {

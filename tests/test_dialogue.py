@@ -193,7 +193,7 @@ def test_state_survives_between_instances():
 
 @pytest.mark.parametrize("text, expected_fragment", [
     ("what are your opening hours", "9:00"),
-    ("where is the lost and found office", "Student Services"),
+    ("where is the lost and found office", "B1"),
     ("I found a phone in the lab", "counter"),
 ])
 def test_other_intents_get_canned_responses(text, expected_fragment):
