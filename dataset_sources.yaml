@@ -35,7 +35,9 @@ sources:
     url: https://universe.roboflow.com/flexx/earphone-detection/dataset/4
     licence: CC BY 4.0
     roboflow: {workspace: flexx, project: earphone-detection, version: 4}
-    classes: {Ear_Piece: Earbuds, earphone: Earbuds, Earphone: Earbuds, Head_Phone: Earbuds}
+    # The downloaded version also has "headphone", which the dataset page did not list.
+    classes: {Ear_Piece: Earbuds, earphone: Earbuds, Earphone: Earbuds, Head_Phone: Earbuds,
+              headphone: Earbuds, headphones: Earbuds}
 
   - key: pen_calculator_earbuds
     name: pen calculator earbuds (aquamanj)

@@ -105,3 +105,9 @@ def test_sources_file_is_valid():
     settings = merge.load_settings()
     keys = [s["key"] for s in settings["sources"]]
     assert len(keys) == len(set(keys))
+
+
+def test_unmapped_classes_are_listed_together(settings):
+    settings["sources"][0]["classes"].pop("junk")
+    assert merge.unmapped_classes(settings["sources"][0]) == ["junk"]
+    assert merge.unmapped_classes(settings["sources"][1]) == []

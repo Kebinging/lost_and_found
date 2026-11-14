@@ -120,6 +120,13 @@ def build_name_map(source_names: list[str], mapping: dict, key: str) -> dict[int
     return id_map
 
 
+def unmapped_classes(source: dict) -> list[str]:
+    """Class names in a downloaded source that its ``classes`` map does not cover."""
+    names = prepare_dataset.read_class_names(prepare_dataset.find_data_yaml(source_dir(source)))
+    known = {str(name).strip().lower() for name in source["classes"]}
+    return [name for name in names if name.strip().lower() not in known]
+
+
 def to_box(numbers: list[float]) -> tuple[float, float, float, float] | None:
     """Return ``(x_centre, y_centre, width, height)`` from a box or polygon label line."""
     if len(numbers) == 4:
@@ -317,7 +324,8 @@ def main() -> None:
 
     settings = load_settings(args.sources)
     sources = [s for s in settings["sources"] if s["key"] not in args.skip]
-    notes, items = [], []
+
+    # 1. Make sure every source is on disk (downloads are kept between runs).
     for source in sources:
         folder = source_dir(source)
         has_dataset = folder.exists() and any(folder.rglob("data.yaml"))
@@ -328,6 +336,21 @@ def main() -> None:
             else:
                 raise SystemExit(f"{folder} has no dataset. Download it (--download) or "
                                  f"remove / skip source {source['key']!r}.")
+
+    # 2. Check every source's class names before doing any work, and report
+    #    all the unmapped ones together so they can be fixed in one go.
+    problems = {s["key"]: unmapped_classes(s) for s in sources}
+    problems = {key: names for key, names in problems.items() if names}
+    if problems:
+        print("\nThese class names are not in dataset_sources.yaml. Add each one to its "
+              "source's 'classes' map (one of our categories, or null to drop it), "
+              "then run this script again - the downloads are kept:")
+        for key, names in problems.items():
+            print(f"  {key}: " + ", ".join(f"{name!r}" for name in names))
+        raise SystemExit(1)
+
+    notes, items = [], []
+    for source in sources:
         source_items = read_source(source)
         notes.append(f"{source['key']}: {len(source_items)} images")
         items += source_items
