@@ -1,0 +1,14 @@
+ultralytics
+opencv-python
+scikit-learn
+sentence-transformers
+torch
+pandas
+openpyxl
+numpy
+pillow
+streamlit
+nltk
+dateparser
+pyyaml
+pytest

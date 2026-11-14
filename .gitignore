@@ -1,0 +1,28 @@
+# Datasets and model weights (large; re-creatable)
+datasets/
+*.pt
+runs/
+
+# Runtime data: photos, records (claims hold students' personal details)
+data/images/
+data/crops/
+data/*.xlsx
+data/*.csv
+data/embeddings.npy
+
+# Generated chatbot model (rebuilt from intents.json)
+chatbot/intent_model.pkl
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local tooling
+.claude/

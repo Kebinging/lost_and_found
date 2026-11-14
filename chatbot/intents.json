@@ -1,0 +1,141 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "hi", "hello", "hey", "hey there", "hi there", "good morning",
+        "good afternoon", "good evening", "hello bot", "greetings",
+        "what's up", "yo", "hiya", "is anyone there"
+      ],
+      "responses": [
+        "Hello! I'm the Lost & Found assistant. Tell me what you lost and I'll check whether it has been handed in.",
+        "Hi there! Lost something? Describe it to me, for example: \"I lost my black umbrella at the library yesterday\".",
+        "Hey! I can check whether your lost item has been handed in. What did you lose?"
+      ]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": [
+        "bye", "goodbye", "see you", "see you later", "bye bye", "catch you later",
+        "talk to you later", "i have to go", "that's all", "that is all for now",
+        "good night", "farewell", "i'm done", "nothing else"
+      ],
+      "responses": [
+        "Goodbye! I hope you get your item back soon.",
+        "Bye! Come back any time to check again.",
+        "See you! Good luck finding your item."
+      ]
+    },
+    {
+      "tag": "thanks",
+      "patterns": [
+        "thanks", "thank you", "thanks a lot", "thank you so much", "thx",
+        "much appreciated", "cheers", "that was helpful", "thanks for your help",
+        "great, thanks", "awesome thank you", "ty", "i appreciate it"
+      ],
+      "responses": [
+        "You're welcome!",
+        "Happy to help!",
+        "Any time. Let me know if you need anything else."
+      ]
+    },
+    {
+      "tag": "report_lost_item",
+      "patterns": [
+        "i lost my umbrella", "i lost my phone", "i lost something",
+        "i have lost my water bottle", "i can't find my keys", "my calculator is missing",
+        "i left my charger in the lab", "i think i dropped my bag somewhere",
+        "i misplaced my laptop", "help me find my book", "has anyone handed in a black bottle",
+        "did someone find my keys", "i am looking for my lost umbrella",
+        "my bag went missing yesterday", "i forgot my bottle in the lecture hall",
+        "i want to report a lost item", "lost item", "i lost it at the library",
+        "can you check if my phone was found", "someone may have turned in my calculator"
+      ],
+      "responses": [
+        "Sorry to hear that. Let's see if it has been handed in."
+      ]
+    },
+    {
+      "tag": "check_claim_status",
+      "patterns": [
+        "what is the status of my claim", "check my claim", "claim status",
+        "is my claim approved", "any update on my claim", "has my claim been verified",
+        "i want to check my claim reference", "where is my claim", "track my claim",
+        "status of claim CL-0001", "did staff look at my claim", "my claim reference is CL-0003"
+      ],
+      "responses": [
+        "Sure - what is your claim reference? It looks like CL-0001.",
+        "I can check that. Please type your claim reference, for example CL-0001."
+      ]
+    },
+    {
+      "tag": "office_hours",
+      "patterns": [
+        "what are your opening hours", "when is the lost and found open",
+        "office hours", "what time do you open", "what time do you close",
+        "are you open on weekends", "when can i come to the counter",
+        "is the counter open now", "opening times", "what are the working hours",
+        "are you open on saturday", "until what time are you open"
+      ],
+      "responses": [
+        "The Lost & Found counter is open Monday to Friday, 9:00 am to 5:00 pm. It is closed on weekends and public holidays.",
+        "We're open on weekdays from 9:00 am to 5:00 pm."
+      ]
+    },
+    {
+      "tag": "office_location",
+      "patterns": [
+        "where is the lost and found", "where is the counter", "where are you located",
+        "how do i get to the lost and found office", "where do i collect my item",
+        "which building is the lost and found in", "office location",
+        "where should i go to pick it up", "what is your address",
+        "where is the office", "directions to the lost and found", "where can i find you"
+      ],
+      "responses": [
+        "The Lost & Found counter is at the Student Services Centre, ground floor, next to the main entrance.",
+        "You'll find us on the ground floor of the Student Services Centre."
+      ]
+    },
+    {
+      "tag": "how_it_works",
+      "patterns": [
+        "how does this work", "how do i use this", "what can you do", "help",
+        "how does the lost and found system work", "what is this chatbot for",
+        "explain the process", "how do i claim an item", "what happens after i report",
+        "how do i get my item back", "what do you do", "i need help using this"
+      ],
+      "responses": [
+        "Describe your lost item (what it is, its colour, where and when you lost it). I check it against the items handed in. If there is a possible match, you leave your details, get a claim reference, and bring proof of ownership to the counter, where staff verify it.",
+        "Tell me what you lost. If something similar has been handed in I'll give you a claim reference to take to the counter. For security I can't show you photos or details of found items."
+      ]
+    },
+    {
+      "tag": "found_an_item",
+      "patterns": [
+        "i found a phone", "i found something", "i found an umbrella in the library",
+        "someone left a bag in the classroom", "i picked up a set of keys",
+        "there is a bottle left behind in the lab", "where do i hand in a found item",
+        "i want to hand in something i found", "i found a lost item",
+        "what should i do with an item i found", "i came across a wallet",
+        "i want to turn in a found calculator"
+      ],
+      "responses": [
+        "Thank you for being honest! Please bring the item to the Lost & Found counter so staff can register it.",
+        "That's kind of you. Please hand it in at the Lost & Found counter and our staff will take it from there."
+      ]
+    },
+    {
+      "tag": "fallback",
+      "patterns": [
+        "what is the weather today", "tell me a joke", "who are you",
+        "what is the meaning of life", "order a pizza", "play some music",
+        "asdfgh", "what is two plus two", "book a flight", "sing a song",
+        "what time is it", "random words here"
+      ],
+      "responses": [
+        "Sorry, I didn't understand that. I can help you check for a lost item, check a claim, or tell you our opening hours and location.",
+        "I'm not sure I follow. Try something like \"I lost my blue bottle in the cafeteria yesterday\"."
+      ]
+    }
+  ]
+}
