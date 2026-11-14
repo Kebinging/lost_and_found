@@ -18,8 +18,8 @@ A university Lost & Found prototype that combines **object detection** with a **
 ## How it works
 
 ```
-Staff photo ──> YOLO (custom + COCO) ──> crop ──> colour (KMeans) ──┐
-                                           └────> CLIP embedding ───┼──> found_items.xlsx
+Staff photo ──> YOLO (custom + COCO) ──> CLIP names the item ──> crop ──> colour (KMeans + HSV) ──┐
+                                                                  └────> CLIP embedding ───┼──> found_items.xlsx
                                                                     │    images/  crops/  embeddings.npy
 Student chat ──> intent + slots ──> follow-up questions ──> matcher ┘
                                                               │
@@ -29,7 +29,8 @@ Student chat ──> intent + slots ──> follow-up questions ──> matcher 
 | Part | Technology |
 |---|---|
 | Object detection | Ultralytics YOLO11: custom model (Bottle, Umbrella, Calculator, Charger, Key) + COCO `yolo11n.pt` (Phone, Bag, Laptop, Book) |
-| Colour extraction | OpenCV + scikit-learn KMeans, nearest palette colour in LAB space |
+| Naming items YOLO was not trained on | CLIP zero-shot classification (Earbuds, ID Card, Wallet, Spectacles, Watch, Stationery, Clothing, Toy), else "Other" |
+| Colour extraction | OpenCV + scikit-learn KMeans, colour named from hue / saturation / brightness |
 | Image / text similarity | `sentence-transformers` CLIP (`clip-ViT-B-32`) |
 | Intent classifier | TF-IDF + LogisticRegression trained on `chatbot/intents.json` |
 | Slot extraction | Keyword dictionaries + `dateparser` |
@@ -80,6 +81,57 @@ The first run downloads the COCO weights (`models/yolo11n.pt`, ~5 MB), the CLIP 
 **Without `models/best.pt`** the app still runs, but only the COCO categories are
 detected (phone, bag, laptop, book, bottle, umbrella). Train the custom model to add
 calculator, charger and key.
+
+## Items outside the trained classes
+
+YOLO can only report the classes it was trained on: an item outside them is either
+missed or forced into the nearest class (earbuds become a "Charger"). So every detected
+object - or the whole photo, if YOLO finds nothing - is also shown to **CLIP**, which
+compares the picture with written descriptions of every category
+(`config.CATEGORY_PROMPTS`, e.g. "a photo of wireless earbuds") without any training
+(*zero-shot classification*, `core/classifier.py`). The final category is chosen by:
+
+1. CLIP is at least 60% sure it is a category **no YOLO model can detect** → CLIP.
+2. Otherwise, if YOLO found the object → YOLO (it was trained for its classes).
+3. Otherwise, if CLIP is at least 40% sure → CLIP.
+4. Otherwise → **Other**; staff pick the category.
+
+CLIP sees the YOLO box plus a 15% margin, because a tight crop loses context (a hand
+holding a bottle, cropped tightly, looked like a phone to CLIP). The Staff Upload page
+shows how each suggestion was made and CLIP's top three guesses, and staff can always
+change the category, including to **Other**. Students can also choose "Other" in the
+chatbot; their own description is then compared with the photos of items filed as Other.
+
+All thresholds are in `config.py`. They were checked on only a few photos, so test with
+real items and adjust them.
+
+## Train on a combined dataset
+
+To let YOLO itself detect the new categories, combine several datasets. The sources and
+how each one's class names map onto our categories are listed in `dataset_sources.yaml`
+(the original dataset plus earbuds, student ID, wallet, glasses and desk-object datasets
+from Roboflow Universe; check each page's licence and latest version before training).
+`scripts/merge_datasets.py` downloads them, renames the classes, removes duplicates,
+balances the classes, adds some empty "background" images and splits 70 / 20 / 10:
+
+```bash
+python scripts/merge_datasets.py --download --pseudo-label
+```
+
+`--pseudo-label` deals with the main problem of merging: each dataset only labels its
+own classes, so a phone lying next to a wallet is unlabelled and would be learned as
+background. The current YOLO models label such objects (confidence ≥ 0.6) for the
+categories a source does not cover.
+
+Train on Colab with `notebooks/train_combined.ipynb` (or locally with
+`python scripts/train.py --data datasets/combined/data.yaml`).
+
+**Your own photos matter most.** The current model scores 99% mAP50 on its own test
+images but worse on photos taken on campus, because they look different (background,
+lighting, camera). Label 100-200 photos of real items (Roboflow or Label Studio, YOLO
+format), put them in `datasets/sources/campus` and enable that source: with
+`split: real_test` they become a separate real-world test set, the fairest number to
+report. Once you have enough, also add a second batch to training.
 
 ## Train the custom model
 
@@ -197,14 +249,17 @@ nor the YOLO / CLIP models.
 ```
 lost_and_found/
 ├── config.py               # all paths, thresholds, category lists, colour palette
+├── dataset_sources.yaml    # datasets to combine and their class mapping
 ├── requirements.txt
 ├── .streamlit/
 │   └── secrets.toml.example  # template for the staff PIN
 ├── datasets/               # NOT committed (raw download + cleaned split)
 ├── notebooks/
-│   └── train_yolo.ipynb    # Colab: prepare, train, evaluate, export best.pt
+│   ├── train_yolo.ipynb    # Colab: prepare, train, evaluate, export best.pt
+│   └── train_combined.ipynb # Colab: merge several datasets, train, evaluate
 ├── scripts/
 │   ├── prepare_dataset.py  # drop "None", remap IDs, re-split 70/20/10
+│   ├── merge_datasets.py   # combine the datasets in dataset_sources.yaml
 │   ├── train.py            # local training
 │   ├── evaluate.py         # metrics + confusion matrix on the test split
 │   ├── evaluate_chatbot.py # chatbot accuracy on messy messages, before vs after
@@ -217,6 +272,7 @@ lost_and_found/
 ├── core/
 │   ├── storage.py          # the only module that reads/writes data files
 │   ├── detector.py         # runs custom + COCO models, merges results
+│   ├── classifier.py       # CLIP zero-shot naming + YOLO/CLIP decision rule
 │   ├── colour.py           # dominant colour
 │   ├── embedder.py         # CLIP image + text embeddings
 │   └── matcher.py          # scoring + ranking

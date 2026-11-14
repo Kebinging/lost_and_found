@@ -55,10 +55,31 @@ if st.session_state.get("detected_photo") != photo_key:
     st.session_state["detected_photo"] = photo_key
 detections = st.session_state["detections"]
 
+
+
+def explain_category(det: dict) -> None:
+    """Tell staff how the suggested category was chosen, so they can judge it."""
+    named_by, yolo_category = det.get("named_by"), det.get("yolo_category")
+    if named_by == "clip" and yolo_category and yolo_category != det["category"]:
+        st.caption(f"YOLO said **{yolo_category}**, but CLIP is confident it is "
+                   f"**{det['category']}**, which YOLO was not trained on.")
+    elif named_by == "clip":
+        st.caption(f"YOLO found no known object; CLIP thinks the photo shows "
+                   f"**{det['category']}**.")
+    elif named_by == "other":
+        st.caption("Neither YOLO nor CLIP is sure what this is, so it is marked **Other**. "
+                   "Choose the right category if there is one.")
+    if det.get("clip_scores"):
+        guesses = ", ".join(f"{name} {score:.0%}" for name, score in det["clip_scores"])
+        st.caption(f"CLIP's top guesses: {guesses}")
+
+
 photo_column, form_column = st.columns(2)
 with photo_column:
     st.image(detector_module.draw_boxes(image, detections),
              caption="Detected objects" if detections else "No object detected")
+    st.caption("Green box: custom YOLO model, blue: COCO YOLO model, "
+               "orange: no box found, CLIP named the whole photo.")
     if not detector_module.custom_model_available():
         st.caption("Custom model (models/best.pt) not found - only the COCO categories "
                    "(phone, bag, laptop, book, bottle, umbrella) are detected.")
@@ -81,8 +102,9 @@ with form_column:
         selected = detections[choice]
         item_crop = detector_module.crop(image, selected["bbox"])
         st.image(item_crop, width=160, caption="Selected object")
+        explain_category(selected)
 
-    detected_category = selected["category"] if selected else config.CATEGORIES[0]
+    detected_category = selected["category"] if selected else config.OTHER_CATEGORY
     detected_colour = colour.dominant_colour(item_crop)
     colours = list(config.COLOUR_PALETTE)
 
@@ -112,7 +134,10 @@ if save:
         "location_found": location,
         "date_found": date_found,
         "confidence": selected["confidence"] if model_category else 0.0,
-        "detector": selected["source"] if model_category else "manual",
+        # e.g. "custom", "coco+clip" (YOLO box, CLIP name), "clip", "manual"
+        "detector": (selected["source"] + ("+clip" if selected.get("named_by") == "clip"
+                                           and selected["source"] != "clip" else "")
+                     if model_category else "manual"),
     }
     try:
         item_id = storage.add_found_item(record, image, item_crop)

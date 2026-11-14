@@ -52,7 +52,8 @@ SHORT_FORMS = {
     "pb": "power bank", "pwrbank": "power bank", "pwr": "power",
     "kunci": "key", "beg": "bag", "bp": "backpack",
     "lappy": "laptop", "lptp": "laptop", "komputer": "laptop",
-    "buku": "book",
+    "buku": "book", "dompet": "wallet", "kad": "card", "mainan": "toy", "jaket": "jacket",
+    "topi": "hat", "baju": "shirt", "earpiece": "earphones", "airpd": "airpods",
     # colours
     "blk": "black", "hitam": "black", "putih": "white", "gry": "grey", "kelabu": "grey",
     "merah": "red", "biru": "blue", "hijau": "green", "kuning": "yellow",

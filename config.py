@@ -54,21 +54,60 @@ SPLIT_SEED = 42
 # Categories
 # --------------------------------------------------------------------------- #
 # Unified category names used everywhere (storage, UI, chatbot, matcher).
+# YOLO detects the first group; CLIP (core/classifier.py) can name all of
+# them from a picture without training. "Other" is for anything else and is
+# always last.
 CATEGORIES = [
-    "Bottle", "Umbrella", "Calculator", "Charger", "Key",   # custom model
-    "Phone", "Bag", "Laptop", "Book",                        # COCO model
+    "Bottle", "Umbrella", "Calculator", "Charger", "Key",   # custom YOLO model
+    "Phone", "Bag", "Laptop", "Book",                        # COCO YOLO model
+    "Earbuds", "ID Card", "Wallet", "Spectacles", "Watch",   # CLIP only (for now)
+    "Stationery", "Clothing", "Toy",
+    "Other",
 ]
+OTHER_CATEGORY = "Other"
 
 # COCO class name -> unified category. COCO classes not listed are ignored.
 COCO_TO_CATEGORY = {
     "cell phone": "Phone",
     "backpack": "Bag",
     "handbag": "Bag",
+    "suitcase": "Bag",
     "laptop": "Laptop",
     "book": "Book",
     "bottle": "Bottle",
     "umbrella": "Umbrella",
+    "teddy bear": "Toy",
+    "scissors": "Stationery",
 }
+
+# Descriptions CLIP compares a photo with to name the item (zero-shot
+# classification). Several phrasings per category make it more reliable; the
+# best-matching phrase counts. "Other" has none: it is used when CLIP is unsure.
+CATEGORY_PROMPTS = {
+    "Bottle": ["a water bottle", "a drink tumbler", "a thermos flask", "a plastic bottle"],
+    "Umbrella": ["an umbrella", "a folded umbrella", "an open umbrella"],
+    "Calculator": ["a calculator", "a scientific calculator"],
+    "Charger": ["a phone charger", "a charging cable", "a power adapter plug", "a power bank"],
+    "Key": ["a key", "a bunch of keys on a keyring", "a car key"],
+    "Phone": ["a smartphone", "a mobile phone", "a phone in a phone case"],
+    "Bag": ["a backpack", "a handbag", "a tote bag", "a sling bag"],
+    "Laptop": ["a laptop computer", "a closed laptop"],
+    "Book": ["a book", "a notebook", "a textbook", "an exercise book"],
+    "Earbuds": ["wireless earbuds", "an earbuds charging case", "earphones", "headphones"],
+    "ID Card": ["a student ID card", "an identity card", "a card on a lanyard",
+                "a plastic access card"],
+    "Wallet": ["a wallet", "a purse", "a card holder"],
+    "Spectacles": ["a pair of glasses", "spectacles", "sunglasses", "a glasses case"],
+    "Watch": ["a wristwatch", "a smartwatch"],
+    "Stationery": ["a pencil case", "a pen", "pens and pencils", "a ruler"],
+    "Clothing": ["a jacket", "a hoodie", "a sweater", "a hat", "a scarf", "a shirt"],
+    "Toy": ["a toy", "a plush toy", "a stuffed animal", "a small figurine"],
+}
+CLIP_PROMPT_TEMPLATE = "a photo of {}"
+CLIP_TEMPERATURE = 100.0      # CLIP's own logit scale; turns similarities into probabilities
+CLIP_MIN_CONFIDENCE = 0.40    # below this CLIP's guess is not used (-> YOLO's or "Other")
+CLIP_OVERRIDE_CONFIDENCE = 0.60  # CLIP may overrule YOLO only for categories YOLO cannot detect
+CLIP_CROP_MARGIN = 0.15      # CLIP sees the YOLO box plus 15% on each side (a tight crop loses context)
 
 # Words a student might use for each category (lower-case, singular).
 # Plurals ("bottles", "keys") are handled by the slot extractor.
@@ -82,7 +121,22 @@ CATEGORY_SYNONYMS = {
               "cellphone", "cell phone", "android"],
     "Bag": ["bag", "backpack", "handbag", "tote", "rucksack", "sling bag"],
     "Laptop": ["laptop", "macbook", "chromebook"],
-    "Book": ["book", "textbook", "notebook", "novel"],
+    "Book": ["book", "textbook", "notebook", "novel", "exercise book", "notepad",
+             "lecture notes"],
+    "Earbuds": ["earbuds", "earbud", "airpods", "airpod", "earpods", "earphones",
+                "earphone", "headphones", "headphone", "headset", "buds"],
+    "ID Card": ["id card", "student id", "student card", "matric card", "matric",
+                "identity card", "access card", "ic", "id", "card", "lanyard"],
+    "Wallet": ["wallet", "purse", "card holder", "cardholder", "coin pouch"],
+    "Spectacles": ["spectacles", "glasses", "specs", "sunglasses", "eyeglasses",
+                   "glasses case"],
+    "Watch": ["watch", "wristwatch", "smartwatch", "apple watch"],
+    "Stationery": ["stationery", "pencil case", "pencil box", "pen", "pencil", "ruler",
+                   "highlighter", "eraser"],
+    "Clothing": ["jacket", "hoodie", "sweater", "jumper", "cardigan", "hat",
+                 "baseball cap", "scarf", "shirt", "clothes", "clothing"],
+    "Toy": ["toy", "plushie", "plush", "stuffed toy", "stuffed animal", "teddy",
+            "teddy bear", "figurine", "doll"],
 }
 
 # --------------------------------------------------------------------------- #

@@ -8,13 +8,19 @@
 Both models run on every image. Their results are converted to the unified
 category names in ``config.CATEGORIES`` and merged, so the rest of the system
 never needs to know which model found an object.
+
+YOLO can only name the classes it was trained on, so each detected object is
+then also shown to CLIP (``core/classifier.py``), which can recognise items
+YOLO has never seen (earbuds, ID cards, ...). If YOLO finds nothing at all,
+CLIP looks at the whole photo. Items neither model is sure about become
+"Other".
 """
 
 from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -29,9 +35,12 @@ class Detection(TypedDict):
     """One detected object."""
 
     category: str      # unified category name, e.g. "Bottle"
-    confidence: float  # 0..1
+    confidence: float  # 0..1 (YOLO's box confidence, or CLIP's for a whole-photo guess)
     bbox: BBox
-    source: str        # "custom" or "coco"
+    source: str        # which model found the object: "custom", "coco" or "clip" (whole photo)
+    named_by: NotRequired[str]        # who chose the category: "yolo", "clip" or "other"
+    yolo_category: NotRequired[str | None]           # YOLO's own label, before CLIP
+    clip_scores: NotRequired[list[tuple[str, float]]]  # CLIP's top guesses
 
 
 @lru_cache(maxsize=1)
@@ -60,6 +69,19 @@ def load_models() -> dict:
 def custom_model_available() -> bool:
     """True if the trained custom model file is present."""
     return config.CUSTOM_MODEL_PATH.exists()
+
+
+def yolo_categories() -> set[str]:
+    """The unified categories the loaded YOLO models can detect.
+
+    Read from the models themselves, so it updates when ``best.pt`` is
+    retrained with more classes.
+    """
+    models = load_models()
+    found = set(config.COCO_TO_CATEGORY.values())
+    if models["custom"] is not None:
+        found |= {c for c in map(_custom_category, models["custom"].names.values()) if c}
+    return found
 
 
 def _custom_category(class_name: str) -> str | None:
@@ -119,8 +141,14 @@ def merge_detections(detections: list[Detection]) -> list[Detection]:
     return kept
 
 
-def detect(image: Image.Image) -> list[Detection]:
-    """Detect lost-and-found items in ``image``; best detection first."""
+def detect(image: Image.Image, use_clip: bool = True) -> list[Detection]:
+    """Detect lost-and-found items in ``image``; best detection first.
+
+    With ``use_clip`` (the default) every object is also named by CLIP and
+    the final category is chosen by ``classifier.decide``; if YOLO finds
+    nothing, CLIP names the whole photo. If CLIP fails to load, the YOLO
+    results are returned unchanged.
+    """
     models = load_models()
     image = image.convert("RGB")
 
@@ -128,7 +156,43 @@ def detect(image: Image.Image) -> list[Detection]:
     if models["custom"] is not None:
         detections += _run_model(models["custom"], image, "custom")
     detections += _run_model(models["coco"], image, "coco")
-    return merge_detections(detections)
+    detections = merge_detections(detections)
+
+    if use_clip:
+        try:
+            detections = name_with_clip(image, detections)
+        except Exception:
+            logger.exception("CLIP naming failed; using YOLO labels only.")
+    return detections
+
+
+def padded_bbox(bbox: BBox, margin: float) -> BBox:
+    """Grow a box by ``margin`` (a fraction of its width / height) on every side."""
+    x1, y1, x2, y2 = bbox
+    dx, dy = (x2 - x1) * margin, (y2 - y1) * margin
+    return (int(x1 - dx), int(y1 - dy), int(x2 + dx), int(y2 + dy))
+
+
+def name_with_clip(image: Image.Image, detections: list[Detection]) -> list[Detection]:
+    """Let CLIP check / correct each detection's category (see ``core/classifier.py``)."""
+    from core import classifier
+
+    known = yolo_categories()
+    if not detections:
+        width, height = image.size
+        scores = classifier.classify(image)
+        category, named_by = classifier.decide(None, scores, known)
+        return [Detection(category=category, confidence=scores[0][1], bbox=(0, 0, width, height),
+                          source="clip", named_by=named_by, yolo_category=None,
+                          clip_scores=scores[:3])]
+
+    named: list[Detection] = []
+    for det in detections:
+        scores = classifier.classify(crop(image, padded_bbox(det["bbox"], config.CLIP_CROP_MARGIN)))
+        category, named_by = classifier.decide(det["category"], scores, known)
+        named.append({**det, "category": category, "named_by": named_by,
+                      "yolo_category": det["category"], "clip_scores": scores[:3]})
+    return merge_detections(named)
 
 
 def crop(image: Image.Image, bbox: BBox) -> Image.Image:
@@ -152,7 +216,7 @@ def draw_boxes(image: Image.Image, detections: list[Detection]) -> Image.Image:
         font = ImageFont.load_default()
 
     for number, det in enumerate(detections, start=1):
-        colour = "#00B050" if det["source"] == "custom" else "#0070C0"
+        colour = {"custom": "#00B050", "coco": "#0070C0"}.get(det["source"], "#C55A11")
         x1, y1, x2, y2 = det["bbox"]
         draw.rectangle((x1, y1, x2, y2), outline=colour, width=line_width)
         label = f"{number}. {det['category']} {det['confidence']:.2f}"

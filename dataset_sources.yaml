@@ -1,0 +1,88 @@
+# Datasets combined by scripts/merge_datasets.py into one training set.
+#
+# Each source is a YOLO-format dataset (Roboflow "YOLOv8" export, unzipped).
+# "classes" maps EVERY class name in that dataset to one of our categories
+# (config.CATEGORIES) or to null to drop it. A class missing from the map is an
+# error, so a changed dataset can never be silently mis-labelled.
+#
+# Before training, open each dataset page and check: the licence (cite every
+# dataset in the report), the class names (adjust "classes" if they differ),
+# and the version number (use the latest).
+#
+# Your own photos: label them (Roboflow or Label Studio, YOLO format), put them
+# in datasets/sources/campus and remove the "#" from that source below. With
+# "split: real_test" they are never trained on and become a separate
+# real-world test set - the fairest way to measure the model for the report.
+
+output: datasets/combined
+split: {train: 0.70, valid: 0.20, test: 0.10}
+seed: 42
+max_images_per_class: 1500   # stops one big dataset drowning out the others
+background_fraction: 0.10    # share of images with no objects (teaches "nothing here")
+
+sources:
+  - key: lost_and_found
+    name: Lost and Found (rnomo), v2
+    url: https://universe.roboflow.com/rnomo/lost-and-found-nlb4x-e6ayk/dataset/2
+    licence: CC BY 4.0
+    roboflow: {workspace: rnomo, project: lost-and-found-nlb4x-e6ayk, version: 2}
+    path: datasets/raw            # same folder scripts/prepare_dataset.py uses
+    classes: {Bottle: Bottle, Umbrella: Umbrella, Calculator: Calculator,
+              Charger: Charger, Key: Key, None: null}
+
+  - key: earphones
+    name: Earphone Detection (FLEXX)
+    url: https://universe.roboflow.com/flexx/earphone-detection/dataset/4
+    licence: CC BY 4.0
+    roboflow: {workspace: flexx, project: earphone-detection, version: 4}
+    classes: {Ear_Piece: Earbuds, earphone: Earbuds, Earphone: Earbuds, Head_Phone: Earbuds}
+
+  - key: pen_calculator_earbuds
+    name: pen calculator earbuds (aquamanj)
+    url: https://universe.roboflow.com/aquamanj/pen-calculator-earbuds-ecdso/dataset/4
+    licence: CC BY 4.0
+    roboflow: {workspace: aquamanj, project: pen-calculator-earbuds-ecdso, version: 4}
+    classes: {Pen: Stationery, Calculator: Calculator, Ear Device: Earbuds,
+              EarDevice: Earbuds, earbuds: Earbuds, objects: null}
+
+  - key: student_id
+    name: Student ID (FitCheck)
+    url: https://universe.roboflow.com/fitcheck-ibwgs/student-id-4virk/dataset/6
+    licence: CC BY 4.0
+    roboflow: {workspace: fitcheck-ibwgs, project: student-id-4virk, version: 6}
+    classes: {Student-ID: ID Card}
+
+  - key: wallet
+    name: Wallet (Senior project final datasets)
+    url: https://universe.roboflow.com/senior-project-final-datasets/wallet-nfk4a/dataset/1
+    licence: Public Domain
+    roboflow: {workspace: senior-project-final-datasets, project: wallet-nfk4a, version: 1}
+    classes: {Wallet: Wallet}
+
+  - key: desk_objects
+    name: obj detection (Manu Manoj)
+    url: https://universe.roboflow.com/manu-manoj-8b5ju/obj-detection-mfgx9/dataset/3
+    licence: CC BY 4.0
+    roboflow: {workspace: manu-manoj-8b5ju, project: obj-detection-mfgx9, version: 3}
+    classes: {Cup: null, Laptop: Laptop, Pen: Stationery, Camera: null,
+              Calculator: Calculator, Notebook: Book, Cricret bracelet: null,
+              Ear_Piece: Earbuds, Electronic_Device: null, GoogleGlass: null,
+              Head_Phone: Earbuds, MobilePhone: Phone, Radio_Vest: null,
+              Smart_ring: null, Smart_watch: Watch, Spec: Spectacles,
+              SunGlass: Spectacles, Text_in_waterbottle: null, Zeroi hat: null}
+
+  # Glasses mostly photographed on people's faces, not lying on a table, so
+  # it may teach the model the wrong look for a lost pair. Try with and without.
+  - key: glasses
+    name: Glasses Detector (Glasses)
+    url: https://universe.roboflow.com/glasses-8c2pr/glasses-detector-tnd9k/dataset/1
+    licence: CC BY 4.0
+    roboflow: {workspace: glasses-8c2pr, project: glasses-detector-tnd9k, version: 1}
+    classes: {sunglasses: Spectacles, eyeglasses: Spectacles}
+
+  # - key: campus
+  #   name: Our own campus photos
+  #   licence: own photos
+  #   path: datasets/sources/campus
+  #   split: real_test
+  #   classes: {Bottle: Bottle, Umbrella: Umbrella, Earbuds: Earbuds, ID Card: ID Card}

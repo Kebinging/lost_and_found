@@ -33,7 +33,11 @@ def test_nothing_mentioned():
     ("I lost my laptop bag", "Bag"),              # compound: the bag, not the laptop
     ("left my bag with my laptop inside", "Bag"),  # first item mentioned
     ("lost my notebook", "Book"),
-    ("I lost my wallet", None),                    # unsupported category
+    ("I lost my wallet", "Wallet"),
+    ("my airpods case is missing", "Earbuds"),
+    ("lost my student id", "ID Card"),
+    ("left my specs in the lab", "Spectacles"),
+    ("I lost my usb drive", None),                 # unsupported category
 ])
 def test_category(text, expected):
     assert nlu.extract_category(text) == expected

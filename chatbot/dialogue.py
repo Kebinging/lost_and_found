@@ -62,6 +62,8 @@ _START_OVER = re.compile(r"\b(start over|start again|restart|reset|cancel)\b")
 _LOST_WORDS = re.compile(
     r"\b(lost|lose|losing|missing|misplaced|can'?t find|cannot find|couldn'?t find|"
     r"left my|forgot my|dropped my|looking for my)\b")
+_OTHER_ITEM = re.compile(r"^\s*(other|others|something else|none of (the above|these)|"
+                         r"not (listed|there)|not in the list)\b")
 _FOUND_WORDS = re.compile(
     r"\b(found|find|picked|pick up|came across|come across|hand in|handed|turn in|"
     r"turned in|left behind|left a|left an|someone|somebody|someones|someone's)\b")
@@ -336,7 +338,7 @@ class LostItemDialogue:
                 slot, value = question["slot"], question["value"]
                 self.state["slots"][slot] = value
                 self.state["retries"].pop(slot, None)
-                self.state["description"].append(value.lower())
+                self.state["description"].append(question.get("text") or value.lower())
                 return [f"Got it: {value.lower()}."] + self._advance()
             if question["intent"] == "report_lost_item":
                 return self._start_report(question["text"], self._extract_slots(question["text"]))
@@ -382,6 +384,8 @@ class LostItemDialogue:
             slots["date_lost"] = self._date_from_answer(text)
         if pending == "location" and not slots.get("location") and text.strip().lower() == "other":
             slots["location"] = "Other"
+        if pending == "category" and not slots.get("category") and _OTHER_ITEM.search(text):
+            slots["category"] = config.OTHER_CATEGORY
         self._merge_slots(slots)
 
         replies: list[str] = []
@@ -396,12 +400,18 @@ class LostItemDialogue:
                 return self._ask_confirm({"kind": "slot", "slot": pending, "value": guess},
                                          f"Did you mean **{guess.lower()}**?")
             if pending == "category":
-                # Required slot: keep asking, and explain what can be searched.
-                options = ", ".join(c.lower() for c in config.CATEGORIES)
-                prefix = ("I need to know what the item is to search for it. "
-                          if unsure else "Sorry, I didn't recognise that item. ")
-                return [prefix + f"I can search for: {options}. Which one is it? "
-                        "If your item isn't listed, please ask at the Lost & Found counter."]
+                if unsure:
+                    # Required slot: keep asking, and explain what can be searched.
+                    return ["I need to know what the item is to search for it. "
+                            + self._question("category")]
+                # An item we have no category for: offer to search under "Other",
+                # where staff record unusual items. The student's words are kept
+                # so the search can still compare them with the photos.
+                return self._ask_confirm(
+                    {"kind": "slot", "slot": "category", "value": config.OTHER_CATEGORY,
+                     "text": text},
+                    "I don't have a category for that item. Should I search for it under "
+                    "**Other**? Staff record unusual items there.")
             retries = self.state["retries"].get(pending, 0)
             if unsure or retries >= MAX_RETRIES:
                 self.state["slots"][pending] = UNKNOWN
@@ -426,8 +436,10 @@ class LostItemDialogue:
         item = self.state["slots"]["category"]
         item = item.lower() if item and item != UNKNOWN else "item"
         return {
-            "category": "What kind of item did you lose? (for example: bottle, umbrella, "
-                        "calculator, charger, key, phone, bag, laptop or book)",
+            "category": "What kind of item did you lose? (for example: "
+                        + ", ".join(c if c == "ID Card" else c.lower()
+                                    for c in config.CATEGORIES if c != config.OTHER_CATEGORY)
+                        + ". If it is none of these, say \"other\".)",
             "colour": f"What colour is your {item}?",
             "date_lost": f"When did you lose your {item}? (for example: yesterday, last Tuesday, 12 Nov)",
             "location": "Where do you think you lost it? ("

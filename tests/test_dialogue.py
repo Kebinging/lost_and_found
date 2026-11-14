@@ -114,8 +114,9 @@ def test_category_is_required():
     assert bot.state["pending_slot"] == "category"    # still asking
     assert "bottle" in replies[-1].lower()
 
-    bot.handle_message("my wallet")                   # unsupported item
+    reply = bot.handle_message("my usb drive")       # unsupported item
     assert bot.state["pending_slot"] == "category"
+    assert "**Other**" in reply[0]                    # offers to search under Other
 
     bot.handle_message("actually it was my calculator")
     assert bot.state["slots"]["category"] == "Calculator"
@@ -296,3 +297,26 @@ def test_every_menu_button_is_understood(button):
     bot, _ = make()
     reply = bot.handle_message(button)
     assert reply and "didn't understand" not in reply[0]
+
+
+def test_unsupported_item_can_be_searched_under_other():
+    bot, fakes = make()
+    bot.handle_message("I lost something")
+    bot.handle_message("my usb drive")
+    bot.handle_message("yes")
+    assert bot.state["slots"]["category"] == "Other"
+    assert "usb drive" in " ".join(bot.state["description"])   # kept for the photo match
+
+
+def test_other_button_sets_other():
+    bot, _ = make()
+    bot.handle_message("I lost something")
+    assert "Other" in bot.quick_replies
+    bot.handle_message("Other")
+    assert bot.state["slots"]["category"] == "Other"
+
+
+def test_new_categories_are_understood():
+    bot, _ = make()
+    bot.handle_message("lost my airpods at the library yesterday")
+    assert bot.state["slots"]["category"] == "Earbuds"
